@@ -1,0 +1,6 @@
+#!/bin/bash
+rm -fr  ~/results
+cd ~/results_archive
+rm -fr */8*  # Cleanup older dated results 
+rm -f */agent_logs/ag*_*.log  # cleanup old agent logs 
+rm -fr incomplete

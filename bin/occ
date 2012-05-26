@@ -1,0 +1,29 @@
+#!/usr/bin/env ruby
+#
+# This script is used to start OCC
+
+#[ "$RAILS_ENV"  ] || export RAILS_ENV="production"
+occ_home = ENV['OATS_OCC_HOME']
+unless occ_home
+  pwd = Dir.pwd
+  occ_home = pwd if File.basename(pwd) == 'occ'
+end
+occ_home = ENV['HOME'] + '/occ' unless occ_home
+occ_home = ENV['HOME'] + '/NetBeansProjects/occ' unless File.directory?(occ_home)
+
+raise "Must define OCC_HOME or be in occ directory to run this command." unless occ_home
+
+Dir.chdir(occ_home)
+exec 'ruby script/rails server mongrel' # -p 4000
+
+# By pass the following unless using distributed agents
+#  if [ "$OS" != "Windows_NT" ]; then
+#    if  [ -z "$SSH_AGENT_PID" ] || ! ps -ef | grep ${SSH_AGENT_PID} | grep ssh-agent$ > /dev/null ; then
+#      echo "Should start_agent for SSH first"
+#      # exit 1
+#      fi
+#      ssh-add -l ||  echo "*** WARNING *** Please add your ssh keys ssh-add"
+#      fi
+
+
+#mongrel_rails start -e production -p 3000 --log log\production.log

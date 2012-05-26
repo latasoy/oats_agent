@@ -1,0 +1,23 @@
+#!/usr/bin/env ruby
+require 'rubygems'
+
+# To pickup non-gem oats for local debugging
+
+if File.directory? agent_dir = File.expand_path('../../../oats_agent/lib', __FILE__)
+  $:.unshift  agent_dir 
+  gem 'log4r'
+  require 'oats_agent' # bundler fails when it can't find the gem if not in here 
+end
+
+require 'oats_agent/commandline_options'
+require 'log4r'
+
+Log4r::Logger.root.level = Log4r::DEBUG
+Log4r::StdoutOutputter.new('console', :level=>1,
+  :formatter=>Log4r::PatternFormatter.new(:depth=>50,
+    :pattern => "%-5l %d %M", :date_pattern=>"%y-%m-%d %H:%M:%S"))
+$log = Log4r::Logger.new('R')
+$log.add('console')
+options = OatsAgent::CommandlineOptions.options(ARGV.dup)
+
+OatsAgent.spawn(options)

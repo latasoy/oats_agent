@@ -1,0 +1,189 @@
+#!/bin/bash
+# This script is used to start OATS in agent mode and communicate with OCC.
+
+[ "$OS" ] || export OS=$(uname)                     
+if [ "$OS" == "Windows_NT" ]; then
+    export PATH="$PATH:/cygdrive/c/apps/cygwin/bin"
+    [ "$HOSTNAME" ] || HOSTNAME="$COMPUTERNAME"
+else
+    [ "$HOSTNAME" ] || HOSTNAME=`hostname`
+fi
+export HOSTNAME
+[ "$OATS_AGENT_NICKNAME" ] || OATS_AGENT_NICKNAME=${HOSTNAME/.*}
+doc="
+Starts OATS agent to be used with OCC
+
+USAGE: agent [-k[ill]] [-n[ickname] OATS_AGENT_NICKNAME] [ -p[ort]  OATS_AGENT_PORT ]
+             [ -r[epo] OATS_TESTS_REPOSITORY_VERSION ] [ -u OATS_USER]
+
+Parameters: (also can be passed in via environment variables
+ -n OATS_AGENT_NICKNAME OCC ID of the agent.
+ -p OATS_AGENT_PORT Agent port to communicate with OCC. Default is port previously
+    used for OATS_AGENT_NICKNAME.
+ -u OATS_USER who started the agent. Used for logging purposes only.
+ -r OATS_TESTS_REPOSITORY_VERSION Required to update the agent.
+ -k kill the agent, or set OATS_KILL_AGENT
+ -d DISPLAY_NUM Number of the VNC Display, for Linux only
+
+Example:
+/home/occadmin/oats/bin/agent -p 3011 -n occ_1 -r 403cc620c265db84dbd3fb7d7cce4d57416bff09
+
+The agent script should be in the path so that ssh from occ can pick it up.
+Git requires definition of OATS_TESTS_GIT_REPOSITORY environment variable.
+ "
+input_pars="$@"
+while [ "$1" ]; do
+    case $1 in
+	-p*) shift; OATS_AGENT_PORT="$1" ;;
+	-n*) shift; OATS_AGENT_NICKNAME="$1" ;;
+	-u*) shift; OATS_USER="$1" ;;
+	-k*) OATS_KILL_AGENT='OATS_KILL_AGENT' ;;
+	-r*) shift; OATS_TESTS_REPOSITORY_VERSION="$1" ;;
+	-d*) shift; DISPLAY_NUM="$1" ;;
+	*) echo "Unrecognized parameter: $1" ;
+	    echo "$doc"
+	    exit ;;
+    esac
+    shift
+done
+
+function agent_echo {
+    echo "$(date +'%m/%d/%H:%M:%S') $*"
+}
+function fkill {
+    agent_echo "Killing PID: $each_pid"
+    if [ "$OS" == "Windows_NT" ]; then
+	pskill $1
+    else
+	kill -9 $1
+    fi
+}
+
+{
+    agent_echo  "Invoking $0 $input_pars"
+
+    # Need these off when called by OCC, otherwise they OCC values are inherited
+    unset RUBYOPT BUNDLE_BIN_PATH BUNDLE_GEMFILE  # GEM_HOME GEM_PATH # RAILS_ENV
+    [ "$OATS_TESTS_GIT_REPOSITORY" ] && export OATS_TESTS="$HOME/results_archive/$OATS_AGENT_NICKNAME"/oats_tests
+    oats_bin="$OATS_HOME/bin"
+#    [ "$OS" == "Windows_NT" ] && oats_bin=$(cygpath -w $oats_bin)
+#    ruby_com="$oats_bin/oats -n $OATS_AGENT_NICKNAME -p $OATS_AGENT_PORT"
+    cur_dir=$(dirname $(type -p $0))
+    ruby_com="$cur_dir/internal_oats_agent_internal -n $OATS_AGENT_NICKNAME -p $OATS_AGENT_PORT"
+    if [ -e "$config_agent_file" ]; then
+	line=$(grep "^$OATS_AGENT_NICKNAME" "$config_agent_file")
+	read nickname PREV_OATS_AGENT_PORT pid display<<< $line
+	[ "$OATS_AGENT_PORT" ] || OATS_AGENT_PORT=$PREV_OATS_AGENT_PORT
+	[ "$PID" ] || PID=$pid
+	if [ -z "$DISPLAY_NUM" ]; then
+	    if [ "$display" ]; then
+		DISPLAY_NUM=$(echo "$display" | sed -e 's/.*:\(.\).*/\1/')
+		[ "$DISPLAY_NUM" ] || DISPLAY_NUM="$display"
+	    else
+		DISPLAY_NUM='0'
+	    fi
+	fi
+    fi
+    if [ -z "$OATS_AGENT_PORT" ]; then
+	agent_echo "$0: Must specify a port, exiting..." >&2
+	exit 1
+    fi
+
+    [ "$OATS_AGENT_PORT" == "$PREV_OATS_AGENT_PORT" ] && PREV_OATS_AGENT_PORT=''
+    for OATS_AGENT_PORT_VAR in $PREV_OATS_AGENT_PORT $OATS_AGENT_PORT; do
+	skip_port=''
+	if [ "$PID" -a "$OATS_AGENT_PORT_VAR" == "$PREV_OATS_AGENT_PORT" ]; then
+            agent_echo "Attempting to kill agent $OATS_AGENT_NICKNAME with PID: $PID"
+	    fkill $PID
+	    [ $? == 0 ] && skip_port=skip_port
+	fi
+	if [ -z "$skip_port" ]; then
+	    # agent_echo "Attempting to kill process holding on to port $OATS_AGENT_PORT_VAR"
+	    if [ "$OS" == Darwin ]; then
+		lines=$(ps -ef|grep "$ruby_com"|grep -v grep)
+		PID=$(echo $(cut -c 6-11 <<< "$lines"))
+	    else
+		if [ "$OS" == Windows_NT ]; then # Killing the top level bash process doesn't cut it
+		    lines=$(netstat -a -o 2>/dev/null| grep "$OATS_AGENT_PORT_VAR .* LISTEN" )
+		else
+		    lines=$(netstat -n -p -l 2>/dev/null| grep "$OATS_AGENT_PORT_VAR .* LISTEN" )
+		fi
+		PID=$(echo "$line" | sed 's/.* LISTEN[^ ]* *//;s/.ruby .*//')
+		[ "$PID" -a "$PID" != "$line" ] || PID=''
+	    fi
+	    if [ "$PID" ]; then
+		agent_echo "PS line(s): $lines"
+		for each_pid in $PID; do
+		    fkill $each_pid
+		done
+	    # else
+	    # 	agent_echo "No agent is found on port $OATS_AGENT_PORT_VAR"
+	    fi
+	fi
+    done
+    [ "$OATS_KILL_AGENT" ] && return
+
+    if [ -d $OATS_TESTS/.svn ]; then
+	COUNTER=0
+	[ "$OATS_TESTS_REPOSITORY_VERSION" ] && agent_echo "Requested OATS Version: $OATS_TESTS_REPOSITORY_VERSION"
+	while [ $COUNTER -lt 5 ]; do
+            let COUNTER=COUNTER+1
+	    OATS_TESTS_CODE_VERSION=$(svn info $OATS_TESTS | sed -n 's/Last Changed Rev: *//p')
+	    [ "$OATS_TESTS_REPOSITORY_VERSION" ] || break
+	    [ "$OATS_TESTS_CODE_VERSION" -ge "$OATS_TESTS_REPOSITORY_VERSION" ] && break
+	    [ $COUNTER -eq 1 ] || sleep 3
+	    svn update $OATS_TESTS 2>&1
+	done
+	if [ $COUNTER -eq 5 ]; then
+	    agent_echo "Could not update the code version $OATS_TESTS_CODE_VERSION to $OATS_TESTS_REPOSITORY_VERSION" >&2
+	    return 2
+	fi
+	agent_echo "Current OATS code version: $OATS_TESTS_CODE_VERSION"
+    elif [ "$OATS_TESTS_GIT_REPOSITORY" ]; then
+	[ -d $OATS_TESTS ] || git clone $OATS_TESTS_GIT_REPOSITORY $OATS_TESTS
+	cd $OATS_TESTS
+        origin="$OATS_TESTS_GIT_REPOSITORY"
+        [ "$origin" ] || origin=origin
+	if [ "$OATS_TESTS_REPOSITORY_VERSION" ]; then
+	    for i in 1 2; do
+		out=$(git checkout $OATS_TESTS_REPOSITORY_VERSION 2>&1) && break # may detach HEAD, but it is OK
+		if [ "$out" == "fatal: reference is not a tree: $OATS_TESTS_REPOSITORY_VERSION" ]; then
+		    echo -n "Need to pull requested version: $OATS_TESTS_REPOSITORY_VERSION "
+		else
+		    echo "$out"
+		fi
+		git pull $origin master # fast-forward master from origin
+	    done
+        else
+            git pull $origin master # fast-forward master from origin
+	fi
+	OATS_TESTS_CODE_VERSION=$(git rev-list HEAD -1) # last commit in checked out version
+	if [ "${OATS_TESTS_CODE_VERSION##$OATS_TESTS_REPOSITORY_VERSION*}" ]; then
+	    agent_echo "Could not update the code version $OATS_TESTS_CODE_VERSION to $OATS_TESTS_REPOSITORY_VERSION" >&2
+	    return 2
+	fi
+	[ "$OATS_TESTS_REPOSITORY_VERSION" ] || agent_echo "Using OATS code version: $OATS_TESTS_CODE_VERSION"
+    else
+	OATS_TESTS_CODE_VERSION=$OATS_TESTS_REPOSITORY_VERSION
+	[ "$OATS_TESTS_CODE_VERSION" ] && agent_echo "Setting OATS code version to the requested version: $OATS_TESTS_CODE_VERSION]" # This is not set for development/debug
+    fi
+    export OATS_TESTS_CODE_VERSION
+#    echo "$OATS_AGENT_NICKNAME $OATS_AGENT_PORT" >| $config_agent_file
+    if [ "$OS" == "Linux" ]; then # Do this with VNC displays
+	# Allocate 2x as display. VNC takes 592x, vino takes next available from 59++
+#	vnc_num="2$(echo $OATS_AGENT_PORT | cut -c 4)"
+	vnc_num="$DISPLAY_NUM"
+	[ "$vnc_num" ] || vnc_num="1"
+	pgrep -fl "Xvnc4 :$vnc_num" >/dev/null || vncserver :$vnc_num -SecurityTypes=None -geometry 1900x1060
+	export DISPLAY=":$vnc_num.0"
+	agent_echo "Setting DISPLAY to $DISPLAY"
+    fi
+    cd $OATS_HOME  # Needed for bundler
+    agent_echo "Starting agent $OATS_AGENT_NICKNAME on port $OATS_AGENT_PORT"
+    $ruby_com
+} >> $OATS_AGENT_LOGFILE 2>&1 &
+
+PID=$(jobs -p)
+echo "Initiated PID: $PID"  >> $OATS_AGENT_LOGFILE
+echo "$PID"
+echo "$OATS_AGENT_NICKNAME $OATS_AGENT_PORT $PID $DISPLAY_NUM"  >| $OATS_AGENT_CONFIG_FILE
