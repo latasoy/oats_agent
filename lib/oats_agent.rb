@@ -1,12 +1,31 @@
 #require 'rubygems'
-
+unless ENV['HOSTNAME']
+  if RUBY_PLATFORM =~ /(mswin|mingw)/
+    ENV['HOSTNAME'] = ENV['COMPUTERNAME']
+  else
+    ENV['HOSTNAME'] = `hostname`.chomp
+  end
+end
+ENV['HOSTNAME'] = ENV['HOSTNAME'].downcase
+require 'win32ole' if RUBY_PLATFORM =~ /(mswin|mingw)/
 
 module OatsAgent
   class << self
 
-    def fkill(pid)
+    def fkill(proc)
+      if proc.instance_of? Hash
+        pname = proc['cmd']
+        pid = proc['pid']
+        msg = "[#{pname}] with PID #{pid}"
+      else
+        pid = proc
+      end
+      $log.warn "Will attempt to kill" + msg
       if RUBY_PLATFORM =~ /(mswin|mingw)/
-        `pskill #{pid} 2>&1`
+        signal = 'KILL'
+        killed = Process.kill(signal,pid.to_i)
+        killed = 0 if RUBY_VERSION =~ /^1.9/ and killed.empty?
+        $log.warn "Failed to kill the process" + msg if killed == 0
       else
         `kill -9 #{pid} 2>&1`
       end
@@ -18,45 +37,52 @@ module OatsAgent
     #    optional: oats_user, test_directory, repository_version
       
     def spawn(options)
-      nick = options["nickname"]
-      raise " Must specify a machine nickname, exiting..." unless nick
-      port = options["port"].to_s
-      raise " Must specify a port, exiting..." unless port
-
+      nick = options["nickname"] || ENV['HOSTNAME']
+      port = options["port"] || 3010
+      port = port.to_s
       user = options["user"]
       repo_version = options["repository_version"]
       dir_tests = options["test_directory"] || ENV['OATS_TESTS']
 
-      archive_dir = ENV['HOME'] + "/results_archive"
+      archive_dir = File.expand_path "results_archive", ENV['HOME']
       log_dir = "#{archive_dir}/#{nick}/agent_logs"
       config_file = "#{log_dir}/config-agent.txt"
       log_file = "#{log_dir}/agent_#{Time.new.to_i}.log"
       agent_log_file = "#{log_dir}/agent.log"
+      params =  "-n #{nick} -p #{port}"
 
       FileUtils.mkdir_p(log_dir) unless File.exists?(log_dir)
       ENV['OATS_AGENT_LOGFILE'] = log_file
 
+      ruby_cmd = File.expand_path('../oats_agent/start.rb', __FILE__) + ' ' + params
+      
       # Need these off when called by OCC, otherwise the OCC values are inherited
       %w(RUBYOPT BUNDLE_BIN_PATH BUNDLE_GEMFILE).each { |e| ENV[e] = nil }
-
-      params =  "-n #{nick} -p #{port}"
-      ps_cmd = "ps -ew -o pid=,ppid=,command= |grep 'ruby.*/start.rb #{params}' "
-      ps_list = `#{ps_cmd}`
-      list = ps_list.split(/\n/)
       procs = []
-      list.each do |p|
-        p =~ /(\d+)\s+(\d+)\s+(.*)/
-        next if $3.include?('grep')
-        procs.push({ 'pid' => $1, 'ppid' => $2, 'cmd' => $3 }) 
-      end
-
-      unless procs.empty?
-        procs.each do |p|
-          $log.info "Killing PID #{p['pid']}: " + p['cmd']
-          out = fkill(p['pid'])
-          $log.info out unless out == ''
+      if RUBY_PLATFORM =~ /darwin/
+        ps_cmd = "ps -ew -o pid=,ppid=,command= |grep 'ruby.*/start.rb #{params}' "
+        ps_list = `#{ps_cmd}`
+        list = ps_list.split(/\n/)
+        list.each do |p|
+          p =~ /(\d+)\s+(\d+)\s+(.*)/
+          next if $3.include?('grep')
+          procs.push({ 'pid' => $1, 'ppid' => $2, 'cmd' => $3 }) 
         end
+      else
+        WIN32OLE.connect("winmgmts://").ExecQuery("select * from win32_process").each do |process|
+          #          puts [process.Commandline, process.ProcessId, process.name].inspect
+          procs.push 'pid' => process.ProcessId, 'cmd' => process.CommandLine if process.Commandline =~ /#{ruby_cmd}/
+        end
+        # Looking for port is too slow on windows
+        #        lines = "netstat -#{RUBY_PLATFORM =~ /(mswin|mingw)/ ?  'a' : 'n' } -o"
+        #        list = `#{lines}`.split(/\n/)
+        #        list.each do |p|
+        #          p =~ /:(\d+)\s+.*\s+LISTENING\s+(\d+)/
+        #          next unless $1 and $1 == port
+        #          procs.push({ 'pid' => $2, 'cmd' => 'LISTENING' }) 
+        #        end
       end
+      procs.each { |p| fkill(p) }
       exit if options["kill_agent"]
 
       if File.directory?(dir_tests + '/.svn') and ENV['OATS_TESTS_SVN_REPOSITORY']
@@ -121,16 +147,22 @@ module OatsAgent
       else
         code_version = repo_version
         $log.info "Setting OATS code version to the requested version: #{code_version}" if code_version 
-      end
+      end if dir_tests
       ENV['OATS_TESTS_CODE_VERSION'] = code_version
 
       msg = ''
       msg += "User: #{user} " if user
       msg += "Repo version: #{repo_version} " if repo_version
-      ruby_cmd = File.expand_path('../oats_agent/start.rb', __FILE__) + ' ' + params
       $log.info "#{msg}Starting: #{ruby_cmd}"
-      cmd = "#{ruby_cmd} >> #{log_file} 2>&1 &" 
+      if RUBY_PLATFORM =~ /(mswin|mingw)/
+        archiv = ENV['HOME'] + '/results_archive'
+        remote_params = ('server_host' == 'server_host') ? '' : (' -u qa -p ' +'passwd' + ' \\\\' + 'name')
+        cmd = "psexec.exe -d -i -n 10 -w #{archiv}#{remote_params} ruby #{ruby_cmd} 2>&1"
+      else
+        cmd = "#{ruby_cmd} >> #{log_file} 2>&1 &" 
+      end
       out = `#{cmd}`
+      $log.info out unless out == ''
       File.open(config_file, 'w') {|f| f.puts(nick +' '+ port) }
 
       10.times do
@@ -143,31 +175,5 @@ module OatsAgent
       end
 
     end
-
-    def xx    
-      cmd = ENV['OATS_AGENT_HOME'] ? (ENV['OATS_AGENT_HOME'] + '/bin/') : ''
-      cmd += 'oats_agent'
-      cmd += '.bat' if RUBY_PLATFORM =~ /(mswin|mingw)/
-      cmd += " -u #{user.email}" 
-      cmd += " -p #{port} -n #{nickname}"
-      cmd += " -u #{user.email}" if user
-      occ = Occ::Application.config.occ
-      if RUBY_PLATFORM =~ /(mswin|mingw)/
-        archiv = ENV['HOME'] + '/results_archive'
-        remote_params = (name == occ['server_host']) ? '' : (' -u qa -p ' + occ['agent_mp'] + ' \\\\' + name)
-        #      FileUtils.mkdir_p Oats.result_archive_dir
-        "psexec.exe -d -i -n #{occ['timeout_waiting_for_agent']} -w #{archiv}" +
-          remote_params + " #{occ['bash_path']} " + cmd
-      else
-        if name == ENV['HOSTNAME'] or name == occ['server_host']
-          cmd
-        else
-          "ssh #{name} oats/bin/#{cmd}"
-        end
-      end
-      Rails.logger.info "Issuing: #{com}"
-      Rails.logger.info `#{com}`
-    end
-  
   end
 end

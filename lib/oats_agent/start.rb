@@ -22,6 +22,14 @@ require "ragent"
 require "rclient"
 
 options = Oats::Driver.init
+if ENV['OATS_AGENT_LOGFILE'] and RUBY_PLATFORM =~ /(mswin|mingw)/
+  Log4r::FileOutputter.new('agent',
+    :filename=>ENV['OATS_AGENT_LOGFILE'], :trunc=>false, :level=>0,
+    :formatter=>Log4r::PatternFormatter.new(:depth=>50,
+      :pattern => "%-5l %d %M", :date_pattern=>"%y-%m-%d %H:%M:%S"))
+  $log.info "Redirecting output to logfile: " + ENV['OATS_AGENT_LOGFILE']
+  $log.add('agent')
+end  
 # $oats_execution['agent'] (used by framework) == Oats.global['agent'] (by YAMLs) === options
 $oats = Oats::OatsData.load(options['_:ini_file'])
 $oats['_']['options'] = options

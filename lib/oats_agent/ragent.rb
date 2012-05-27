@@ -38,7 +38,8 @@ module OatsAgent
 
     def Ragent.start(occ_def)
       @@occ_default = occ_def # This should not change during agent execution
-      @@logger.add('console')
+      @@logger.add('console')  if ENV['OATS_AGENT_LOGFILE'].nil? or RUBY_PLATFORM =~ /(mswin|mingw)/
+      @@logger.add('agent') if ENV['OATS_AGENT_LOGFILE'] and RUBY_PLATFORM =~ /(mswin|mingw)/
       3.times do |count| # In case of unexpected exceptions
         begin
           @@occ_reintroduction_wait_time = nil
