@@ -26,53 +26,26 @@ module OatsAgent
           end
           opts.on( '-u', '--user USER',
             'Sets OATS_USER for agent' ) do |t|
-            options['user'] = t
+            options['user'] = t if t
           end
-          opts.on( '-r', '--repository_version',
+          opts.on( '-r', '--repository_version REPOSITORY_VERSION',
             'Repository version requested' ) do |t|
             options['repository_version'] = t
+          end
+          opts.on( '-a', '--agent_host HOSTNAME',
+            'Hostname where the agent should start.' ) do |t|
+            options['agent_host'] = t if t
           end
           opts.on( '-k', '--kill_agent',
             'Kill the agent.' ) do |t|
             options['kill_agent'] = true
           end
-#          opts.on( '--run_agent',
-#            'Run the agent in current process instead of spawning. Used internally' ) do |t|
-#            options['run_agent'] = true
-#          end
           opts.on( '-t', '--test_directory DIR_TESTS',
             'Test directory to override environment variable OATS_TESTS.' ) do |t|
             options['dir_tests'] = t
           end
           
           
-          opts.on( '-i', '--ini INI_YAML_FILE',
-            'The oats-user.yml to use.' ) do |t|
-            options['_:ini_file'] = t
-          end
-          opts.on( '-o', '--options key11.key12.key13:val1,key21.key22:val2,...', Array,
-            'Options to override values specified in oats.yml as well as other commandline options.' ) do |t|
-            options['_:options'] = t
-          end
-          opts.on( '-j', '--json JSON',
-            'The json hash to merge with oats data.' ) do |t|
-            options['_:json'] = t
-          end
-          opts.on( '-q', '--quiet',
-            'Do not echo anything to the console while running.' ) do |t|
-            options['_:quiet'] = true
-          end
-
-          # Development options
-          opts.on( '-g', '--gemfile GEMFILE',
-            'Gemfile path to be included.' ) do |t|
-            options['_:gemfile'] = t
-          end
-          opts.on( '-d' , '--d_options unit_test_dir1,unit_test_dir2', Array,
-            'NetBeans passes these d options to TestUnit.' ) do |t|
-            options['_:d_options'] = t
-          end
-
           opts.on_tail( '-h', '--help', 'Display this screen' ) { $stderr.puts opts; exit }
         end
 

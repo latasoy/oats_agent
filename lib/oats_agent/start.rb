@@ -22,14 +22,6 @@ require "ragent"
 require "rclient"
 
 options = Oats::Driver.init
-if ENV['OATS_AGENT_LOGFILE'] and RUBY_PLATFORM =~ /(mswin|mingw)/
-  Log4r::FileOutputter.new('agent',
-    :filename=>ENV['OATS_AGENT_LOGFILE'], :trunc=>false, :level=>0,
-    :formatter=>Log4r::PatternFormatter.new(:depth=>50,
-      :pattern => "%-5l %d %M", :date_pattern=>"%y-%m-%d %H:%M:%S"))
-  $log.info "Redirecting output to logfile: " + ENV['OATS_AGENT_LOGFILE']
-  $log.add('agent')
-end  
 # $oats_execution['agent'] (used by framework) == Oats.global['agent'] (by YAMLs) === options
 $oats = Oats::OatsData.load(options['_:ini_file'])
 $oats['_']['options'] = options
@@ -40,6 +32,25 @@ options['execution:occ:agent_host'] = $oats['execution']['occ']['agent_host']
 options['execution:occ:agent_port'] = $oats['execution']['occ']['agent_port']
 options['execution:occ:agent_nickname'] = ($oats['execution']['occ']['agent_nickname'] ||  options['execution:occ:agent_host'].sub(/\..*/,''))
 $oats['execution']['occ']['agent_nickname'] = options['execution:occ:agent_nickname']
+
+if ENV['OATS_AGENT_LOGFILE'] 
+  # For windows always write to console
+  OatsAgent::Ragent.logger.add('console') if RUBY_PLATFORM =~ /(mswin|mingw)/ 
+else
+  # Otherwise agent should write to console only when running start.rb directly w/o logfile
+  OatsAgent::Ragent.logger.add('console') 
+  archive_dir = File.expand_path "results_archive", ENV['HOME']
+  log_dir = "#{archive_dir}/#{options['execution:occ:agent_nickname']}/agent_logs"
+  ENV['OATS_AGENT_LOGFILE'] = "#{log_dir}/agent_#{Time.new.to_i}.log"
+end
+
+Log4r::FileOutputter.new('agent',
+  :filename=>ENV['OATS_AGENT_LOGFILE'], :trunc=>false, :level=>0,
+  :formatter=>Log4r::PatternFormatter.new(:depth=>50,
+    :pattern => "%-5l %d %M", :date_pattern=>"%y-%m-%d %H:%M:%S"))
+#$log.info "Redirecting output to logfile: " + ENV['OATS_AGENT_LOGFILE']
+$log.add('agent')
+OatsAgent::Ragent.logger.add('agent')    
 
 if options['_:command']
   require 'oats/rclient'

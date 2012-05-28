@@ -12,7 +12,6 @@ module OatsAgent
     @@oats_info_snapshot = {}
     @@job_count = 1
     @@occ_default = nil
-    @@logger = Log4r::Logger.new('A')
     include EM::P::ObjectProtocol
 
 
@@ -35,11 +34,12 @@ module OatsAgent
     def Ragent.occ
       @@occ_default
     end
+    def Ragent.logger
+      @@logger ||= Log4r::Logger.new('A')
+    end
 
     def Ragent.start(occ_def)
       @@occ_default = occ_def # This should not change during agent execution
-      @@logger.add('console')  if ENV['OATS_AGENT_LOGFILE'].nil? or RUBY_PLATFORM =~ /(mswin|mingw)/
-      @@logger.add('agent') if ENV['OATS_AGENT_LOGFILE'] and RUBY_PLATFORM =~ /(mswin|mingw)/
       3.times do |count| # In case of unexpected exceptions
         begin
           @@occ_reintroduction_wait_time = nil

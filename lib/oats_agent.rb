@@ -16,19 +16,47 @@ module OatsAgent
       if proc.instance_of? Hash
         pname = proc['cmd']
         pid = proc['pid']
-        msg = "[#{pname}] with PID #{pid}"
+        msg = " PID #{pid}: #{pname}"
       else
         pid = proc
       end
-      $log.warn "Will attempt to kill" + msg
+      $log.warn "Killing" + msg
       if RUBY_PLATFORM =~ /(mswin|mingw)/
-        signal = 'KILL'
-        killed = Process.kill(signal,pid.to_i)
+        killed = Process.kill('KILL',pid.to_i)
         killed = 0 if RUBY_VERSION =~ /^1.9/ and killed.empty?
-        $log.warn "Failed to kill the process" + msg if killed == 0
+        $log.warn "Failed to kill" + msg if killed == 0
       else
-        `kill -9 #{pid} 2>&1`
+        out = `kill -9 #{pid} 2>&1`
+        $log.warn out unless out == ''
       end
+    end
+    
+    def kill_matching(cmd_string)
+      procs = []
+      if RUBY_PLATFORM =~ /(mswin|mingw)/
+        WIN32OLE.connect("winmgmts://").ExecQuery("select * from win32_process").each do |process|
+          #          puts [process.Commandline, process.ProcessId, process.name].inspect
+          procs.push 'pid' => process.ProcessId, 'cmd' => process.CommandLine if process.Commandline =~ /#{cmd_string}/
+        end
+        # Looking for port is too slow on windows
+        #        lines = "netstat -#{RUBY_PLATFORM =~ /(mswin|mingw)/ ?  'a' : 'n' } -o"
+        #        list = `#{lines}`.split(/\n/)
+        #        list.each do |p|
+        #          p =~ /:(\d+)\s+.*\s+LISTENING\s+(\d+)/
+        #          next unless $1 and $1 == port
+        #          procs.push({ 'pid' => $2, 'cmd' => 'LISTENING' }) 
+        #        end
+      else
+        ps_cmd = "ps -ew -o pid=,ppid=,command="
+        ps_list = `#{ps_cmd}`
+        list = ps_list.split(/\n/)
+        list.each do |p|
+          next unless p =~ /#{cmd_string}/
+          p =~ /(\d+)\s+(\d+)\s+(.*)/
+          procs.push({ 'pid' => $1, 'ppid' => $2, 'cmd' => $3 }) 
+        end
+      end
+      procs.each { |p| fkill(p) }
     end
 
     # Initiates process to run agent in the background
@@ -37,6 +65,7 @@ module OatsAgent
     #    optional: oats_user, test_directory, repository_version
       
     def spawn(options)
+      agent_host = options["agent_host"] || ENV['HOSTNAME']
       nick = options["nickname"] || ENV['HOSTNAME']
       port = options["port"] || 3010
       port = port.to_s
@@ -46,8 +75,8 @@ module OatsAgent
 
       archive_dir = File.expand_path "results_archive", ENV['HOME']
       log_dir = "#{archive_dir}/#{nick}/agent_logs"
-      config_file = "#{log_dir}/config-agent.txt"
       log_file = "#{log_dir}/agent_#{Time.new.to_i}.log"
+      config_file = "#{log_dir}/config-agent.txt"
       agent_log_file = "#{log_dir}/agent.log"
       params =  "-n #{nick} -p #{port}"
 
@@ -58,31 +87,7 @@ module OatsAgent
       
       # Need these off when called by OCC, otherwise the OCC values are inherited
       %w(RUBYOPT BUNDLE_BIN_PATH BUNDLE_GEMFILE).each { |e| ENV[e] = nil }
-      procs = []
-      if RUBY_PLATFORM =~ /darwin/
-        ps_cmd = "ps -ew -o pid=,ppid=,command= |grep 'ruby.*/start.rb #{params}' "
-        ps_list = `#{ps_cmd}`
-        list = ps_list.split(/\n/)
-        list.each do |p|
-          p =~ /(\d+)\s+(\d+)\s+(.*)/
-          next if $3.include?('grep')
-          procs.push({ 'pid' => $1, 'ppid' => $2, 'cmd' => $3 }) 
-        end
-      else
-        WIN32OLE.connect("winmgmts://").ExecQuery("select * from win32_process").each do |process|
-          #          puts [process.Commandline, process.ProcessId, process.name].inspect
-          procs.push 'pid' => process.ProcessId, 'cmd' => process.CommandLine if process.Commandline =~ /#{ruby_cmd}/
-        end
-        # Looking for port is too slow on windows
-        #        lines = "netstat -#{RUBY_PLATFORM =~ /(mswin|mingw)/ ?  'a' : 'n' } -o"
-        #        list = `#{lines}`.split(/\n/)
-        #        list.each do |p|
-        #          p =~ /:(\d+)\s+.*\s+LISTENING\s+(\d+)/
-        #          next unless $1 and $1 == port
-        #          procs.push({ 'pid' => $2, 'cmd' => 'LISTENING' }) 
-        #        end
-      end
-      procs.each { |p| fkill(p) }
+      kill_matching ruby_cmd
       exit if options["kill_agent"]
 
       if File.directory?(dir_tests + '/.svn') and ENV['OATS_TESTS_SVN_REPOSITORY']
@@ -156,10 +161,9 @@ module OatsAgent
       $log.info "#{msg}Starting: #{ruby_cmd}"
       if RUBY_PLATFORM =~ /(mswin|mingw)/
         archiv = ENV['HOME'] + '/results_archive'
-        remote_params = ('server_host' == 'server_host') ? '' : (' -u qa -p ' +'passwd' + ' \\\\' + 'name')
-        cmd = "psexec.exe -d -i -n 10 -w #{archiv}#{remote_params} ruby #{ruby_cmd} 2>&1"
+        cmd = "psexec.exe -d -i -n 10 -w #{archiv} ruby #{ruby_cmd} 2>&1"
       else
-        cmd = "#{ruby_cmd} >> #{log_file} 2>&1 &" 
+        cmd = "#{ruby_cmd} >/dev/null 2>&1 &" 
       end
       out = `#{cmd}`
       $log.info out unless out == ''

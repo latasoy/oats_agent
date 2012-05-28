@@ -9,21 +9,16 @@ For more information on OATS and OCC see the READMEs in
 
 ## Installation
 
-Add this line to your application's Gemfile:
-
-    gem 'oats_agent'
-
-And then execute:
-
-    $ bundle
-
-Or install it yourself as:
+Install this gem on the machines that will have OATS agents.
 
     $ gem install oats_agent
 
+
 ## Usage
 
-TODO: Write usage instructions here
+   Register the OATS agent with OCC:
+    $ oats_agent -n <agent_nickname> -p <agent_port>
+
 
 ## Contributing
 
