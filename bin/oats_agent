@@ -19,20 +19,4 @@ Log4r::StdoutOutputter.new('console', :level=>1,
 $log = Log4r::Logger.new('R')
 $log.add('console')
 options = OatsAgent::CommandlineOptions.options(ARGV.dup)
-if options["agent_host"].nil? or options["agent_host"] == ENV['HOSTNAME']
-  OatsAgent.spawn(options)
-else
-  params = ARGV.dup
-  if RUBY_PLATFORM =~ /(mswin|mingw)/
-    cmd = "psexec.exe -d -i -n 10 -w " + ENV['HOME'] + '/results_archive' +
-      ' -u qa -p ' + 'passwd' + ' \\\\' + options["agent_host"] +
-      ' ruby oats_agent ' + params.join(' ')
-  else
-    #  params.delete('-a')
-    #  params.delete(options["agent_host"])
-    #  options['agent_host'] = ENV['HOSTNAME']
-    cmd = "ssh " + options["agent_host"] + ' oats_agent ' + params.join(' ')
-  end
-  out = `#{cmd}`
-  $log.info out unless out == ''
-end
+OatsAgent.spawn(options)

@@ -65,7 +65,6 @@ module OatsAgent
     #    optional: oats_user, test_directory, repository_version
       
     def spawn(options)
-      agent_host = options["agent_host"] || ENV['HOSTNAME']
       nick = options["nickname"] || ENV['HOSTNAME']
       port = options["port"] || 3010
       port = port.to_s
@@ -79,7 +78,26 @@ module OatsAgent
       config_file = "#{log_dir}/config-agent.txt"
       agent_log_file = "#{log_dir}/agent.log"
       params =  "-n #{nick} -p #{port}"
-
+      
+      agent_params = params.dup
+      agent_params +=  "-r #{repo_version}" if repo_version
+      agent_params +=  "-u #{user}" if user
+      if options["agent_host"] and options["agent_host"] != ENV['HOSTNAME']
+        if RUBY_PLATFORM =~ /(mswin|mingw)/
+          cmd = "psexec.exe -d -i -n 10 -w " + archive_dir +
+            ' -u qa -p ' + 'passwd' + ' \\\\' + options["agent_host"] +
+            ' ruby oats_agent ' + agent_params.join(' ')
+        else
+          #  options['agent_host'] = ENV['HOSTNAME']
+          cmd = "ssh " + options["agent_host"] + ' oats_agent ' + agent_params
+        end
+        $log.info "Issuing remote host request: #{cmd}"
+        out = `#{cmd}`
+        $log.info out unless out == ''
+        return
+      end
+      
+      
       FileUtils.mkdir_p(log_dir) unless File.exists?(log_dir)
       ENV['OATS_AGENT_LOGFILE'] = log_file
 
@@ -88,7 +106,7 @@ module OatsAgent
       # Need these off when called by OCC, otherwise the OCC values are inherited
       %w(RUBYOPT BUNDLE_BIN_PATH BUNDLE_GEMFILE).each { |e| ENV[e] = nil }
       kill_matching ruby_cmd
-      exit if options["kill_agent"]
+      return if options["kill_agent"]
 
       if File.directory?(dir_tests + '/.svn') and ENV['OATS_TESTS_SVN_REPOSITORY']
         svn_out =nil
