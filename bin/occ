@@ -9,9 +9,12 @@ unless occ_home
   occ_home = pwd if File.basename(pwd) == 'occ'
 end
 occ_home = ENV['HOME'] + '/occ' unless occ_home
-occ_home = ENV['HOME'] + '/NetBeansProjects/occ' unless File.directory?(occ_home)
-
-raise "Must define OCC_HOME or be in occ directory to run this command." unless occ_home
+if RUBY_PLATFORM =~ /(mswin|mingw)/
+  occ_home = ENV['USERPROFILE'] + '/Documents/NetBeansProjects/occ' unless File.directory?(occ_home)
+else
+  occ_home = ENV['HOME'] + '/NetBeansProjects/occ' unless File.directory?(occ_home)
+end
+raise "Must define OCC_HOME or be in occ directory to run this command." unless occ_home and File.directory?(occ_home)
 
 Dir.chdir(occ_home)
 exec 'ruby script/rails server mongrel' # -p 4000
