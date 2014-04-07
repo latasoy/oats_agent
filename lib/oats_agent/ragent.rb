@@ -40,13 +40,13 @@ module OatsAgent
 
     def Ragent.start(occ_def)
       @@occ_default = occ_def # This should not change during agent execution
-      3.times do |count| # In case of unexpected exceptions
+      1.times do |count| # In case of unexpected exceptions
         begin
           @@occ_reintroduction_wait_time = nil
           @@is_busy = false # If agent is started from scratch assume previous one is gone
           @@in_next_job = false
           @@logger.info "====================================================================================="
-          mach_port = ENV['HOSTNAME'] + ':' + $oats['execution']['occ']['port'].to_s
+          mach_port = ENV['HOSTNAME'] + ':' + $oats['execution']['occ']['server_port'].to_s
           @@logger.info "Started OATS Server execution-#{count} on #{mach_port} at #{Time.now} "
           EventMachine::run do
             EventMachine::start_server @@occ_default['agent_host'], @@occ_default['agent_port'].to_i, Ragent

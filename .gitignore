@@ -15,4 +15,7 @@ spec/reports
 test/tmp
 test/version_tmp
 tmp
-/nbproject/private/
+**/.idea/workspace.xml
+**/.idea/tasks.xml
+.rvm
+
