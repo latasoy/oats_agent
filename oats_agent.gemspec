@@ -15,7 +15,7 @@ Gem::Specification.new do |gem|
   gem.require_paths = ["lib"]
   gem.version       = OatsAgent::VERSION
   
-  gem.add_dependency 'oats'
+  #gem.add_dependency 'oats'
   gem.add_dependency 'log4r'
 
   
