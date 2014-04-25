@@ -12,7 +12,8 @@ occ_home = ENV['HOME'] + '/occ' unless occ_home
 raise "Must define OATS_OCC_HOME or be in occ directory to run this command." unless occ_home and File.directory?(occ_home)
 
 Dir.chdir(occ_home)
-exec 'rails s'
+exec 'ruby script/rails server mongrel' # -p 4000
+# exec 'rails s'  # For thin, which doesn't work with EventMachine
 
 # By pass the following unless using distributed agents
 #  if [ "$OS" != "Windows_NT" ]; then
