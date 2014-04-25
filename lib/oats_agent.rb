@@ -83,7 +83,7 @@ module OatsAgent
       agent_params = params.dup
       agent_params +=  " -r #{repo_version}" if repo_version
       agent_params +=  " -u #{user}" if user
-      if options["agent_host"] and options["agent_host"] != ENV['HOSTNAME']
+      if options["agent_host"] and options["agent_host"] != ENV['OATS_OCC_HOST'].downcase and options["agent_host"] != ENV['HOSTNAME']
         if RUBY_PLATFORM =~ /(mswin|mingw)/
           cmd = "psexec.exe -d -i -n 10 -w " + archive_dir +
             ' -u qa -p ' + 'passwd' + ' \\\\' + options["agent_host"] +
