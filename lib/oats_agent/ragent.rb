@@ -175,6 +175,7 @@ module OatsAgent
       stop_oats = Oats.context && Oats.context['stop_oats']
       response[:is_signal_oats_to_stop] = stop_oats if stop_oats
       server_logger "Sending " + response.inspect
+      # File.write('/users/levent.atasoy/results_archive/res.json',JSON.pretty_generate(response))
       response[:password] = password
       send_object(response)
       close_connection_after_writing
