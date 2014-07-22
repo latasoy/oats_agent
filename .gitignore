@@ -15,7 +15,6 @@ spec/reports
 test/tmp
 test/version_tmp
 tmp
-**/.idea/workspace.xml
-**/.idea/tasks.xml
+.idea
 .rvm
 
