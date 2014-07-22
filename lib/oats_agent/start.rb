@@ -38,8 +38,9 @@ if ENV['OATS_AGENT_LOGFILE']
   OatsAgent::Ragent.logger.add('console') if RUBY_PLATFORM =~ /(mswin|mingw)/ 
 else
   # Otherwise agent should write to console only when running start.rb directly w/o logfile
-  OatsAgent::Ragent.logger.add('console') 
-  archive_dir = File.expand_path "results_archive", ENV['HOME']
+  OatsAgent::Ragent.logger.add('console')
+  ENV['OATS_USER_HOME'] ||= ENV['HOME']
+  archive_dir = File.expand_path "results_archive", ENV['OATS_USER_HOME']
   log_dir = "#{archive_dir}/#{options['execution:occ:agent_nickname']}/agent_logs"
   ENV['OATS_AGENT_LOGFILE'] = "#{log_dir}/agent_#{Time.new.to_i}.log"
 end

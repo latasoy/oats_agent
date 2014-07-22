@@ -72,8 +72,8 @@ module OatsAgent
       user = options["user"]
       repo_version = options["repository_version"]
       dir_tests = options["test_directory"] || ENV['OATS_TESTS']
-
-      archive_dir = File.expand_path "results_archive", ENV['HOME']
+      ENV['OATS_USER_HOME'] ||= ENV['HOME']
+      archive_dir = File.expand_path "results_archive", ENV['OATS_USER_HOME']
       log_dir = "#{archive_dir}/#{nick}/agent_logs"
       log_file = "#{log_dir}/agent_#{Time.new.to_i}.log"
       config_file = "#{log_dir}/config-agent.txt"
@@ -180,7 +180,7 @@ module OatsAgent
       msg += "Repo version: #{repo_version} " if repo_version
       $log.info "#{msg}Starting: #{ruby_cmd}"
       if RUBY_PLATFORM =~ /(mswin|mingw)/
-        archiv = ENV['HOME'] + '/results_archive'
+        archiv = ENV['OATS_USER_HOME'] + '/results_archive'
         cmd = "psexec.exe -d -i -n 10 -w #{archiv} ruby #{ruby_cmd} 2>&1"
       else
         cmd = "#{ruby_cmd} >/dev/null 2>&1 &" 
